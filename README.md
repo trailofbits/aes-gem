@@ -180,12 +180,16 @@ AES-128-GEM uses 128-bit keys with 192-bit nonces. The first 128 bits of nonce a
 
 **Algorithm**
 
-1. Set `b = AES-CBC-MAC(K, N[0:24] || 0x414553)`
+1. Set `b = AES-CBC-MAC(K, N[0:24] || 0x47454D2D_313238)`
 3. Return `b xor K`
 
 **Output**:
 
 A 128-bit subkey for use with the rest of the algorithm.
+
+**Comments**:
+
+The constant `0x47454D2D_313238` is the ASCII string `GEM-128`.
 
 ### Encryption (128-bit mode)
 
