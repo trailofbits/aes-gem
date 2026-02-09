@@ -80,12 +80,7 @@ fn decrypt_detached<T: aes_gem::TagSize>(
     let cipher = AesGem::<Aes256, T>::new(&key.into());
     let mut buf = ct.to_vec();
     cipher
-        .decrypt_inout_detached(
-            &nonce,
-            aad,
-            (&mut buf[..]).into(),
-            &tag,
-        )
+        .decrypt_inout_detached(&nonce, aad, (&mut buf[..]).into(), &tag)
         .expect("decryption failed");
     buf
 }
@@ -101,28 +96,11 @@ fn run_test_case(tag_bits: usize, tc: &TestCase) {
 
     macro_rules! check {
         ($tag_ty:ty) => {{
-            let (ct, tag) =
-                encrypt_detached::<$tag_ty>(
-                    &key, &nonce, &pt, &aad,
-                );
-            assert_eq!(
-                ct, want_ct,
-                "ciphertext mismatch: {}",
-                tc.description
-            );
-            assert_eq!(
-                tag, want_tag,
-                "tag mismatch: {}",
-                tc.description
-            );
-            let got_pt = decrypt_detached::<$tag_ty>(
-                &key, &nonce, &want_ct, &aad, &want_tag,
-            );
-            assert_eq!(
-                got_pt, pt,
-                "plaintext mismatch: {}",
-                tc.description
-            );
+            let (ct, tag) = encrypt_detached::<$tag_ty>(&key, &nonce, &pt, &aad);
+            assert_eq!(ct, want_ct, "ciphertext mismatch: {}", tc.description);
+            assert_eq!(tag, want_tag, "tag mismatch: {}", tc.description);
+            let got_pt = decrypt_detached::<$tag_ty>(&key, &nonce, &want_ct, &aad, &want_tag);
+            assert_eq!(got_pt, pt, "plaintext mismatch: {}", tc.description);
         }};
     }
 
@@ -138,10 +116,8 @@ fn run_test_case(tag_bits: usize, tc: &TestCase) {
 
 #[test]
 fn kat_vectors() {
-    let data = std::fs::read_to_string("../../kat.json")
-        .expect("read kat.json");
-    let kat: KatFile =
-        serde_json::from_str(&data).expect("parse kat.json");
+    let data = std::fs::read_to_string("../../kat.json").expect("read kat.json");
+    let kat: KatFile = serde_json::from_str(&data).expect("parse kat.json");
 
     let mut total = 0;
     for group in &kat.test_groups {

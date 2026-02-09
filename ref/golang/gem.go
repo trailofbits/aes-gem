@@ -399,7 +399,7 @@ func computeTag(
 
 	s := gh.finalize()
 	origKey.Encrypt(s[:], s[:]) // S2 = E(K, S)
-	xorBlock(&s, &mask)        // T = tagMask XOR S2
+	xorBlock(&s, &mask)         // T = tagMask XOR S2
 	copy(tagOut, s[:])          // MSB_t (first tagSize bytes)
 }
 

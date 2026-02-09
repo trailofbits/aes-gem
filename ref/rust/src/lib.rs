@@ -12,23 +12,17 @@
 //!
 //! Simple usage (allocating, no associated data):
 //!
-#![cfg_attr(
-    all(feature = "getrandom", feature = "std"),
-    doc = "```"
-)]
-#![cfg_attr(
-    not(all(feature = "getrandom", feature = "std")),
-    doc = "```ignore"
-)]
+#![cfg_attr(all(feature = "getrandom", feature = "std"), doc = "```")]
+#![cfg_attr(not(all(feature = "getrandom", feature = "std")), doc = "```ignore")]
 //! use aes_gem::{
-//!     aead::{Aead, AeadCore, KeyInit, OsRng},
-//!     Aes256Gem, Nonce, Key
+//!     aead::{self, Aead, Generate, KeyInit},
+//!     Aes256Gem, Key
 //! };
 //!
 //! # fn gen_key() -> Result<(), core::array::TryFromSliceError> {
 //! // The encryption key can be generated randomly:
 //! # #[cfg(all(feature = "getrandom", feature = "std"))] {
-//! let key = Aes256Gem::generate_key().expect("generate key");
+//! let key: Key<Aes256Gem> = Generate::generate();
 //! # }
 //!
 //! // Transformed from a byte array:
@@ -41,13 +35,11 @@
 //! # Ok(()) }
 //!
 //! # fn main() -> Result<(), Box<dyn std::error::Error>> {
-//! // Alternatively, the key can be transformed directly from a byte slice
-//! // (panics on length mismatch):
-//! # let key: &[u8] = &[42; 32];
-//! let key = Key::<Aes256Gem>::from_slice(key);
+//! // Alternatively, the key can be transformed directly from a byte array:
+//! let key = Key::<Aes256Gem>::from([42u8; 32]);
 //!
 //! let cipher = Aes256Gem::new(&key);
-//! let nonce = Aes256Gem::generate_nonce()?; // 96-bits; unique per message
+//! let nonce: aead::Nonce<Aes256Gem> = Generate::generate();
 //! let ciphertext = cipher.encrypt(&nonce, b"plaintext message".as_ref())?;
 //! let plaintext = cipher.decrypt(&nonce, ciphertext.as_ref())?;
 //! assert_eq!(&plaintext, b"plaintext message");
@@ -109,8 +101,7 @@ pub use aes;
 use cipher::{
     array::Array,
     consts::{U16, U32},
-    BlockCipherEncrypt, BlockSizeUser, InnerIvInit,
-    StreamCipherCore,
+    BlockCipherEncrypt, BlockSizeUser, InnerIvInit, StreamCipherCore,
 };
 use core::marker::PhantomData;
 use ghash::{universal_hash::UniversalHash, GHash};
@@ -150,7 +141,7 @@ pub trait TagSize: private::SealedTagSize {}
 impl<T: private::SealedTagSize> TagSize for T {}
 
 mod private {
-    use cipher::array::{ArraySize, typenum::Unsigned};
+    use cipher::array::{typenum::Unsigned, ArraySize};
     use cipher::consts;
 
     pub trait SealedTagSize: ArraySize + Unsigned {}
@@ -206,9 +197,7 @@ where
 
 impl<Aes, TagSize> KeyInit for AesGem<Aes, TagSize>
 where
-    Aes: BlockSizeUser<BlockSize = U16>
-        + BlockCipherEncrypt
-        + KeyInit,
+    Aes: BlockSizeUser<BlockSize = U16> + BlockCipherEncrypt + KeyInit,
     TagSize: self::TagSize,
 {
     fn new(key: &Key<Self>) -> Self {
@@ -227,15 +216,12 @@ where
 {
     type NonceSize = U32;
     type TagSize = TagSize;
-    const TAG_POSITION: aead::TagPosition =
-        aead::TagPosition::Postfix;
+    const TAG_POSITION: aead::TagPosition = aead::TagPosition::Postfix;
 }
 
 impl<Aes, TagSize> AeadInOut for AesGem<Aes, TagSize>
 where
-    Aes: BlockSizeUser<BlockSize = U16>
-        + BlockCipherEncrypt
-        + KeyInit,
+    Aes: BlockSizeUser<BlockSize = U16> + BlockCipherEncrypt + KeyInit,
     TagSize: self::TagSize,
 {
     fn encrypt_inout_detached(
@@ -244,9 +230,7 @@ where
         associated_data: &[u8],
         buffer: inout::InOutBuf<'_, '_, u8>,
     ) -> aead::Result<aead::Tag<Self>> {
-        if buffer.len() as u64 > P_MAX
-            || associated_data.len() as u64 > A_MAX
-        {
+        if buffer.len() as u64 > P_MAX || associated_data.len() as u64 > A_MAX {
             return Err(Error);
         }
 
@@ -256,18 +240,13 @@ where
         let nonce_tail = &nonce[24..32];
         let subkey = self.derive_subkey(&nonce[..24]);
         let ghash = Self::derive_ghash(&subkey);
-        let tag_mask =
-            Self::compute_j0_mask(&subkey, nonce_tail);
+        let tag_mask = Self::compute_j0_mask(&subkey, nonce_tail);
 
         Self::apply_segmented_ctr(&subkey, nonce_tail, out);
 
-        let full_tag = self.compute_tag(
-            ghash, tag_mask, associated_data, out,
-        );
+        let full_tag = self.compute_tag(ghash, tag_mask, associated_data, out);
         let mut tag = aead::Tag::<Self>::default();
-        tag.copy_from_slice(
-            &full_tag[..TagSize::to_usize()],
-        );
+        tag.copy_from_slice(&full_tag[..TagSize::to_usize()]);
         Ok(tag)
     }
 
@@ -278,46 +257,33 @@ where
         buffer: inout::InOutBuf<'_, '_, u8>,
         tag: &aead::Tag<Self>,
     ) -> aead::Result<()> {
-        if buffer.len() as u64 > C_MAX
-            || associated_data.len() as u64 > A_MAX
-        {
+        if buffer.len() as u64 > C_MAX || associated_data.len() as u64 > A_MAX {
             return Err(Error);
         }
 
         let nonce_tail = &nonce[24..32];
         let subkey = self.derive_subkey(&nonce[..24]);
         let ghash = Self::derive_ghash(&subkey);
-        let tag_mask =
-            Self::compute_j0_mask(&subkey, nonce_tail);
+        let tag_mask = Self::compute_j0_mask(&subkey, nonce_tail);
 
         // Verify tag over ciphertext (input side).
-        let expected = self.compute_tag(
-            ghash, tag_mask, associated_data,
-            buffer.get_in(),
-        );
+        let expected = self.compute_tag(ghash, tag_mask, associated_data, buffer.get_in());
 
         use subtle::ConstantTimeEq;
-        if !bool::from(
-            expected[..TagSize::to_usize()]
-                .ct_eq(&tag[..]),
-        ) {
+        if !bool::from(expected[..TagSize::to_usize()].ct_eq(&tag[..])) {
             return Err(Error);
         }
 
         // Copy ciphertext to output, then decrypt in-place.
         let out = buffer.into_out_with_copied_in();
-        Self::apply_segmented_ctr(
-            &subkey, nonce_tail, out,
-        );
+        Self::apply_segmented_ctr(&subkey, nonce_tail, out);
         Ok(())
     }
 }
 
 impl<Aes, TagSize> AesGem<Aes, TagSize>
 where
-    Aes: BlockSizeUser<BlockSize = U16>
-        + BlockCipherEncrypt
-        + KeyInit,
+    Aes: BlockSizeUser<BlockSize = U16> + BlockCipherEncrypt + KeyInit,
     TagSize: self::TagSize,
 {
     /// DeriveSubKey (256-bit mode):
@@ -374,25 +340,17 @@ where
     ///   b0 = AES-ECB(subkey, N_tail || (0xFD000000_00000000 + 2*i))
     ///   b1 = AES-ECB(subkey, N_tail || (0xFD000000_00000000 + 2*i+1))
     ///   return b0 || b1
-    fn derive_segment_key(
-        subkey: &Aes,
-        nonce_tail: &[u8],
-        seg_idx: u32,
-    ) -> Aes {
+    fn derive_segment_key(subkey: &Aes, nonce_tail: &[u8], seg_idx: u32) -> Aes {
         let i = seg_idx as u64;
 
         let mut b0 = Block::default();
         b0[..8].copy_from_slice(nonce_tail);
-        b0[8..16].copy_from_slice(
-            &(SEG_KEY_BASE + 2 * i).to_be_bytes(),
-        );
+        b0[8..16].copy_from_slice(&(SEG_KEY_BASE + 2 * i).to_be_bytes());
         subkey.encrypt_block(&mut b0);
 
         let mut b1 = Block::default();
         b1[..8].copy_from_slice(nonce_tail);
-        b1[8..16].copy_from_slice(
-            &(SEG_KEY_BASE + 2 * i + 1).to_be_bytes(),
-        );
+        b1[8..16].copy_from_slice(&(SEG_KEY_BASE + 2 * i + 1).to_be_bytes());
         subkey.encrypt_block(&mut b1);
 
         let mut sk = Key::<Aes>::default();
@@ -447,18 +405,12 @@ where
     /// Encrypt or decrypt using segmented AES-CTR32.
     ///
     /// Each segment derives a fresh key for at most 2^32 blocks.
-    fn apply_segmented_ctr(
-        subkey: &Aes,
-        nonce_tail: &[u8],
-        buffer: &mut [u8],
-    ) {
+    fn apply_segmented_ctr(subkey: &Aes, nonce_tail: &[u8], buffer: &mut [u8]) {
         let mut offset = 0usize;
         let mut seg_idx = 0u32;
 
         while offset < buffer.len() {
-            let seg_key = Self::derive_segment_key(
-                subkey, nonce_tail, seg_idx,
-            );
+            let seg_key = Self::derive_segment_key(subkey, nonce_tail, seg_idx);
 
             // IV: N[24:32] || to_be32(seg_idx) || 0x00000000
             let mut iv = Block::default();
@@ -466,14 +418,9 @@ where
             iv[8..12].copy_from_slice(&seg_idx.to_be_bytes());
 
             let remaining = buffer.len() - offset;
-            let seg_len = core::cmp::min(
-                BYTES_PER_SEGMENT,
-                remaining as u64,
-            ) as usize;
+            let seg_len = core::cmp::min(BYTES_PER_SEGMENT, remaining as u64) as usize;
 
-            let ctr = Ctr32BE::inner_iv_init(
-                seg_key, &iv,
-            );
+            let ctr = Ctr32BE::inner_iv_init(seg_key, &iv);
             let seg = &mut buffer[offset..offset + seg_len];
             ctr.apply_keystream_partial(seg.into());
 
