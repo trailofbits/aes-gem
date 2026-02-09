@@ -21,6 +21,7 @@ struct KatFile {
 struct TestGroup {
     #[allow(dead_code)]
     test_group_id: usize,
+    key_bits: usize,
     tag_bits: usize,
     tests: Vec<TestCase>,
 }
@@ -121,6 +122,10 @@ fn kat_vectors() {
 
     let mut total = 0;
     for group in &kat.test_groups {
+        // Rust crate only implements AES-256-GEM; skip AES-128 groups.
+        if group.key_bits != 256 {
+            continue;
+        }
         for tc in &group.tests {
             run_test_case(group.tag_bits, tc);
             total += 1;

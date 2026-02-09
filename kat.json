@@ -293,6 +293,106 @@
           "keyCommitment": "6cbbc2c59e777e8d275fc1410eed921abe726320a93c9bd9eac9fa34e0760a3a"
         }
       ]
+    },
+    {
+      "testGroupId": 7,
+      "keyBits": 128,
+      "tagBits": 128,
+      "nonceBits": 192,
+      "tests": [
+        {
+          "testId": 1,
+          "description": "AES-128: Empty plaintext and AAD, all-zero key/nonce",
+          "key": "00000000000000000000000000000000",
+          "nonce": "000000000000000000000000000000000000000000000000",
+          "plaintext": "",
+          "aad": "",
+          "ciphertext": "",
+          "tag": "56f753929ea237cbeee33ce798bd4325"
+        },
+        {
+          "testId": 2,
+          "description": "AES-128: Empty plaintext, with AAD",
+          "key": "00000000000000000000000000000000",
+          "nonce": "000000000000000000000000000000000000000000000000",
+          "plaintext": "",
+          "aad": "6164646974696f6e616c2064617461",
+          "ciphertext": "",
+          "tag": "76478a7578848d1a5177a7b5f1a6e027"
+        },
+        {
+          "testId": 3,
+          "description": "AES-128: With plaintext, empty AAD",
+          "key": "00000000000000000000000000000000",
+          "nonce": "000000000000000000000000000000000000000000000000",
+          "plaintext": "68656c6c6f2c204145532d3132382d47454d21",
+          "aad": "",
+          "ciphertext": "b6d5047492f37c7182862ef6bb3e432edab41b",
+          "tag": "38ae7a08458b58aef20831517a44a526"
+        },
+        {
+          "testId": 4,
+          "description": "AES-128: With plaintext and AAD",
+          "key": "00000000000000000000000000000000",
+          "nonce": "000000000000000000000000000000000000000000000000",
+          "plaintext": "68656c6c6f2c204145532d3132382d47454d21",
+          "aad": "6164646974696f6e616c2064617461",
+          "ciphertext": "b6d5047492f37c7182862ef6bb3e432edab41b",
+          "tag": "6d793481b57d3331a38e2c5daa3b8c10"
+        },
+        {
+          "testId": 5,
+          "description": "AES-128: Incrementing key and nonce",
+          "key": "000102030405060708090a0b0c0d0e0f",
+          "nonce": "000102030405060708090a0b0c0d0e0f0102030405060708",
+          "plaintext": "54686520717569636b2062726f776e20666f78",
+          "aad": "41454144",
+          "ciphertext": "99939069dbf40e7e74413b67411ddde4697331",
+          "tag": "89dbda8e89b55df52bec03da571df0c3"
+        },
+        {
+          "testId": 6,
+          "description": "AES-128: All-ones key and nonce",
+          "key": "ffffffffffffffffffffffffffffffff",
+          "nonce": "ffffffffffffffffffffffffffffffffffffffffffffffff",
+          "plaintext": "000102030405060708090a0b0c0d0e0f",
+          "aad": "ff",
+          "ciphertext": "20490e073c8bded35aa4ccf3f395c7cf",
+          "tag": "5de44bfb869b99dbbdda869fd92f2f44"
+        },
+        {
+          "testId": 7,
+          "description": "AES-128: 256-byte plaintext",
+          "key": "000102030405060708090a0b0c0d0e0f",
+          "nonce": "000102030405060708090a0b0c0d0e0f0102030405060708",
+          "plaintext": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f404142434445464748494a4b4c4d4e4f505152535455565758595a5b5c5d5e5f606162636465666768696a6b6c6d6e6f707172737475767778797a7b7c7d7e7f808182838485868788898a8b8c8d8e8f909192939495969798999a9b9c9d9e9fa0a1a2a3a4a5a6a7a8a9aaabacadaeafb0b1b2b3b4b5b6b7b8b9babbbcbdbebfc0c1c2c3c4c5c6c7c8c9cacbcccdcecfd0d1d2d3d4d5d6d7d8d9dadbdcdddedfe0e1e2e3e4e5e6e7e8e9eaebecedeeeff0f1f2f3f4f5f6f7f8f9fafbfcfdfeff",
+          "aad": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f",
+          "ciphertext": "cdfaf74aae84611a1768531e2267bdcb1f0d5b8bd69ffce26b7802c53b76f9680574eb7e1809ec9f3182d9b6fe1270f987db73d8714be5acd6759b64dfeee386169ba0d9b0ef5358c45add50edd8492fbeba2055bf89b895c22922ac9254d7db970ee60e9ee40654cd5a94897115427d90588a0e7c86b88f60f7d1334b90991288cbf976c1ca6dcc2b77a40103356b1f227ba6d835ea885b9efbae23a2f92d334531a070492b8d4109ea777af8898027767473c745d3a126cf084111f9eed8171a43789f10e196a8a2e36aaa8d41b2a2f51df65a4be01c10bb9858af1e9c022bbf294747eea5ccd767aa499c22af6881cc0230e1519a344ae8932f10c6defaba",
+          "tag": "7469db67ace63287af3851ab030be24f"
+        },
+        {
+          "testId": 8,
+          "description": "AES-128: Key commitment, all-zero key/nonce",
+          "key": "00000000000000000000000000000000",
+          "nonce": "000000000000000000000000000000000000000000000000",
+          "plaintext": "",
+          "aad": "",
+          "ciphertext": "",
+          "tag": "56f753929ea237cbeee33ce798bd4325",
+          "keyCommitment": "ecd134d2a4a7095c1e65ae7628a182073e9273e63037f8f54d57f48f5c7d0ad4"
+        },
+        {
+          "testId": 9,
+          "description": "AES-128: Key commitment, incrementing",
+          "key": "000102030405060708090a0b0c0d0e0f",
+          "nonce": "000102030405060708090a0b0c0d0e0f0102030405060708",
+          "plaintext": "48656c6c6f",
+          "aad": "576f726c64",
+          "ciphertext": "859e9925c5",
+          "tag": "692283210dbd3df809716d7a5f56b48f",
+          "keyCommitment": "d6f1464d69795c413d61893b10282819d1f4bbeddd694a55dd91f2c6af3bd76c"
+        }
+      ]
     }
   ]
 }

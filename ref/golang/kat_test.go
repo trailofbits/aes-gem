@@ -55,9 +55,21 @@ func TestKATVectors(t *testing.T) {
 				wantCT := mustHex(t, tc.Ciphertext)
 				wantTag := mustHex(t, tc.Tag)
 
-				aead, err := NewAES256WithTagSize(key, tagSize)
+				var aead interface {
+					Seal(dst, nonce, pt, aad []byte) []byte
+					Open(dst, nonce, ct, aad []byte) ([]byte, error)
+				}
+				var err error
+				switch g.KeyBits {
+				case 256:
+					aead, err = NewAES256WithTagSize(key, tagSize)
+				case 128:
+					aead, err = NewAES128WithTagSize(key, tagSize)
+				default:
+					t.Fatalf("unsupported keyBits: %d", g.KeyBits)
+				}
 				if err != nil {
-					t.Fatalf("NewAES256WithTagSize: %v", err)
+					t.Fatalf("new AEAD: %v", err)
 				}
 
 				// Test encryption.
@@ -94,9 +106,16 @@ func TestKATVectors(t *testing.T) {
 				// Test key commitment if present.
 				if tc.KeyCommitment != "" {
 					wantQ := mustHex(t, tc.KeyCommitment)
-					gotQ, err := KeyCommitment256(key, nonce)
-					if err != nil {
-						t.Fatalf("KeyCommitment256: %v", err)
+					var gotQ []byte
+					var kcErr error
+					switch g.KeyBits {
+					case 256:
+						gotQ, kcErr = KeyCommitment256(key, nonce)
+					case 128:
+						gotQ, kcErr = KeyCommitment128(key, nonce)
+					}
+					if kcErr != nil {
+						t.Fatalf("KeyCommitment: %v", kcErr)
 					}
 					if !bytes.Equal(gotQ, wantQ) {
 						t.Errorf(
