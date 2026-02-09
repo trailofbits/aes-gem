@@ -50,34 +50,35 @@ func (g *ghash) finalize() [blockSize]byte {
 // gfMul multiplies two elements in GF(2^128) using the NIST SP 800-38D
 // bit ordering (MSB of first byte = x^0).
 //
-// This is a simple schoolbook implementation for clarity, not constant-time.
+// Constant-time: all branches are replaced with masked operations so
+// that the execution path is independent of secret data.
 func gfMul(x, y *[blockSize]byte) [blockSize]byte {
 	var z [blockSize]byte // accumulator
 	var v [blockSize]byte // shifted multiplicand
 	copy(v[:], y[:])
 
 	for i := 0; i < 128; i++ {
-		// If bit i of x is set (MSB-first within each byte)
-		if x[i/8]&(0x80>>uint(i%8)) != 0 {
-			for j := range z {
-				z[j] ^= v[j]
-			}
+		// Extract bit i of x (MSB-first within each byte) as 0 or 1,
+		// then expand to a full-byte mask (0x00 or 0xFF).
+		bit := (x[i/8] >> uint(7-i%8)) & 1
+		mask := byte(0) - bit
+		for j := range z {
+			z[j] ^= v[j] & mask
 		}
 
-		// Save bit 127 of v (LSB of last byte)
+		// Save bit 127 of v (LSB of last byte), expand to mask.
 		carry := v[15] & 1
+		carryMask := byte(0) - carry
 
-		// Right-shift v by 1 bit
+		// Right-shift v by 1 bit.
 		for j := 15; j > 0; j-- {
 			v[j] = (v[j] >> 1) | (v[j-1] << 7)
 		}
 		v[0] >>= 1
 
-		// If the shifted-out bit was 1, XOR with the reduction
-		// polynomial R = 0xE1 || 0^120.
-		if carry != 0 {
-			v[0] ^= 0xE1
-		}
+		// Conditionally XOR the reduction polynomial
+		// R = 0xE1 || 0^120.
+		v[0] ^= 0xE1 & carryMask
 	}
 	return z
 }
