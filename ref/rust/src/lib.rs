@@ -1,6 +1,6 @@
 #![no_std]
 #![cfg_attr(docsrs, feature(doc_cfg))]
-#![doc = include_str!("../README.md")]
+#![doc = include_str!("../../../README.md")]
 #![doc(
     html_logo_url = "https://raw.githubusercontent.com/RustCrypto/meta/master/logo.svg",
     html_favicon_url = "https://raw.githubusercontent.com/RustCrypto/meta/master/logo.svg"
@@ -13,11 +13,11 @@
 //! Simple usage (allocating, no associated data):
 //!
 #![cfg_attr(
-    all(feature = "getrandom", feature = "heapless", feature = "std"),
+    all(feature = "getrandom", feature = "std"),
     doc = "```"
 )]
 #![cfg_attr(
-    not(all(feature = "getrandom", feature = "heapless", feature = "std")),
+    not(all(feature = "getrandom", feature = "std")),
     doc = "```ignore"
 )]
 //! use aes_gem::{
@@ -70,14 +70,7 @@
 //! which can then be passed as the `buffer` parameter to the in-place encrypt
 //! and decrypt methods:
 //!
-#![cfg_attr(
-    all(feature = "getrandom", feature = "heapless", feature = "std"),
-    doc = "```"
-)]
-#![cfg_attr(
-    not(all(feature = "getrandom", feature = "heapless", feature = "std")),
-    doc = "```ignore"
-)]
+//! ```ignore
 //! # fn main() -> Result<(), Box<dyn std::error::Error>> {
 //! use aes_gem::{
 //!     aead::{AeadCore, AeadInPlace, KeyInit, OsRng, heapless::Vec},
@@ -108,15 +101,16 @@
 //! [`aead::Buffer`] for `arrayvec::ArrayVec` (re-exported from the [`aead`] crate as
 //! [`aead::arrayvec::ArrayVec`]).
 
-pub use aead::{self, AeadCore, AeadInPlace, Error, Key, KeyInit, KeySizeUser};
+pub use aead::{self, AeadCore, AeadInOut, Error, Key, KeyInit, KeySizeUser};
 
 #[cfg(feature = "aes")]
 pub use aes;
 
 use cipher::{
-    array::{Array, ArraySize},
-    consts::{U0, U16, U32},
-    BlockCipher, BlockCipherEncrypt, BlockSizeUser, InnerIvInit, StreamCipherCore,
+    array::Array,
+    consts::{U16, U32},
+    BlockCipherEncrypt, BlockSizeUser, InnerIvInit,
+    StreamCipherCore,
 };
 use core::marker::PhantomData;
 use ghash::{universal_hash::UniversalHash, GHash};
@@ -125,16 +119,22 @@ use ghash::{universal_hash::UniversalHash, GHash};
 use zeroize::Zeroize;
 
 #[cfg(feature = "aes")]
-use aes::{cipher::consts::U32, Aes256};
+use aes::Aes256;
 
-/// Maximum length of associated data.
+/// Maximum length of associated data (2^61 bytes).
 pub const A_MAX: u64 = 1 << 61;
 
-/// Maximum length of plaintext.
+/// Maximum length of plaintext (2^61 bytes).
 pub const P_MAX: u64 = 1 << 61;
 
-/// Maximum length of ciphertext. Includes authentication tag.
+/// Maximum length of ciphertext including authentication tag.
 pub const C_MAX: u64 = (1 << 61) + 16;
+
+/// Maximum bytes per CTR segment before re-keying (2^36).
+const BYTES_PER_SEGMENT: u64 = 1u64 << 36;
+
+/// Base counter value for segment key derivation (reserved range).
+const SEG_KEY_BASE: u64 = 0xFD00000000000000;
 
 /// AES-GEM nonces.
 pub type Nonce<NonceSize> = Array<u8, NonceSize>;
@@ -150,9 +150,9 @@ pub trait TagSize: private::SealedTagSize {}
 impl<T: private::SealedTagSize> TagSize for T {}
 
 mod private {
-    use cipher::{array::ArraySize, consts, Unsigned};
+    use cipher::array::{ArraySize, typenum::Unsigned};
+    use cipher::consts;
 
-    // Sealed traits stop other crates from implementing any traits that use it.
     pub trait SealedTagSize: ArraySize + Unsigned {}
 
     impl SealedTagSize for consts::U12 {}
@@ -162,45 +162,37 @@ mod private {
     impl SealedTagSize for consts::U16 {}
 }
 
-/// AES-GEM with a 256-bit key and 256-bit nonce.
+/// AES-256-GEM with 128-bit authentication tag.
 #[cfg(feature = "aes")]
 #[cfg_attr(docsrs, doc(cfg(feature = "aes")))]
-pub type Aes256Gem = AesGem<Aes256, U32>;
+pub type Aes256Gem = AesGem<Aes256, U16>;
 
-/// AES block.
+/// AES block (128 bits).
 type Block = Array<u8, U16>;
 
-/// Counter mode with a 32-bit big endian counter.
-type Ctr64BE<Aes> = ctr::CtrCore<Aes, ctr::flavors::Ctr64BE>;
+/// Counter mode with a 32-bit big-endian counter.
+type Ctr32BE<Aes> = ctr::CtrCore<Aes, ctr::flavors::Ctr32BE>;
 
-/// AES-GEM: generic over an underlying AES implementation and nonce size.
+/// AES-GEM: Galois Extended Mode.
 ///
-/// This type is generic to support substituting alternative AES implementations
-/// (e.g. embedded hardware implementations)
+/// Generic over an underlying AES implementation. Currently only
+/// AES-256 is fully implemented (via the [`Aes256Gem`] type alias).
 ///
-/// It is NOT intended to be instantiated with any block cipher besides AES!
-/// Doing so runs the risk of unintended cryptographic properties!
-///
-/// The `TagSize` generic parameter can be used to instantiate AES-GEM with other
-/// authorization tag sizes, however it's recommended to use it with `typenum::U16`,
-/// the default of 128-bits.
-///
-/// If in doubt, use the built-in [`Aes256Gem`] type alias.
+/// The `TagSize` generic parameter controls authentication tag length.
+/// Each tag size produces a distinct GHASH key via domain separation.
 #[derive(Clone)]
 pub struct AesGem<Aes, TagSize = U16>
 where
+    Aes: KeySizeUser,
     TagSize: self::TagSize,
 {
-    /// Encryption cipher.
+    /// AES cipher initialized with the original key K.
     cipher: Aes,
 
-    /// We need to persist a copy of the key in order to derive subkeys
-    key: Key,
+    /// Raw key bytes for the XOR step in DeriveSubKey.
+    key_bytes: Key<Aes>,
 
-    /// GHASH authenticator.
-    ghash: GHash,
-
-    /// Length of the tag.
+    /// Tag size marker.
     tag_size: PhantomData<TagSize>,
 }
 
@@ -214,38 +206,15 @@ where
 
 impl<Aes, TagSize> KeyInit for AesGem<Aes, TagSize>
 where
-    Aes: BlockSizeUser<BlockSize = U16> + BlockCipherEncrypt + KeyInit,
+    Aes: BlockSizeUser<BlockSize = U16>
+        + BlockCipherEncrypt
+        + KeyInit,
     TagSize: self::TagSize,
 {
     fn new(key: &Key<Self>) -> Self {
-        Aes::new(key).into()
-    }
-}
-
-impl<Aes, TagSize> From<Aes> for AesGem<Aes, TagSize>
-where
-    Aes: BlockSizeUser<BlockSize = U16> + BlockCipherEncrypt,
-    TagSize: self::TagSize,
-{
-    fn from(cipher: Aes, key: Key) -> Self {
-        let mut ghash_key = ghash::Key::default();
-        /// This is a slight departure from GCM, which used an all-zero block:
-        /// AES-GEM uses a GHASH key where every bit is set.
-        for i in 0..16 {
-            ghash_key[i] = 0xff;
-        }
-        cipher.encrypt_block(&mut ghash_key);
-
-        let ghash = GHash::new(&ghash_key);
-
-        #[cfg(feature = "zeroize")]
-        ghash_key.zeroize();
-
-        /// We need the key for subkey derivation
         Self {
-            cipher,
-            key,
-            ghash,
+            cipher: Aes::new(key),
+            key_bytes: key.clone(),
             tag_size: PhantomData,
         }
     }
@@ -253,157 +222,298 @@ where
 
 impl<Aes, TagSize> AeadCore for AesGem<Aes, TagSize>
 where
+    Aes: KeySizeUser,
     TagSize: self::TagSize,
 {
+    type NonceSize = U32;
     type TagSize = TagSize;
-    type CiphertextOverhead = U0;
+    const TAG_POSITION: aead::TagPosition =
+        aead::TagPosition::Postfix;
 }
 
-impl<Aes, TagSize> AeadInPlace for AesGem<Aes, TagSize>
+impl<Aes, TagSize> AeadInOut for AesGem<Aes, TagSize>
 where
-    Aes: BlockCipher + BlockSizeUser<BlockSize = U16> + BlockCipherEncrypt,
+    Aes: BlockSizeUser<BlockSize = U16>
+        + BlockCipherEncrypt
+        + KeyInit,
     TagSize: self::TagSize,
 {
-    fn encrypt_in_place_detached(
+    fn encrypt_inout_detached(
         &self,
-        nonce: &Nonce<U32>,
+        nonce: &aead::Nonce<Self>,
         associated_data: &[u8],
-        buffer: &mut [u8],
-    ) -> Result<Tag<TagSize>, Error> {
-        if buffer.len() as u64 > P_MAX || associated_data.len() as u64 > A_MAX {
+        buffer: inout::InOutBuf<'_, '_, u8>,
+    ) -> aead::Result<aead::Tag<Self>> {
+        if buffer.len() as u64 > P_MAX
+            || associated_data.len() as u64 > A_MAX
+        {
             return Err(Error);
         }
-        let inner_cipher = self.derive_subkey(nonce);
-        let (ctr, mask) = self.init_ctr(inner_cipher, nonce;
 
-        ctr.apply_keystream_partial(buffer.into());
+        // Copy plaintext to output, then encrypt in-place.
+        let out = buffer.into_out_with_copied_in();
 
-        let full_tag = self.compute_tag(inner_cipher, mask, associated_data, buffer);
-        Ok(Tag::clone_from_slice(&full_tag[..TagSize::to_usize()]))
+        let nonce_tail = &nonce[24..32];
+        let subkey = self.derive_subkey(&nonce[..24]);
+        let ghash = Self::derive_ghash(&subkey);
+        let tag_mask =
+            Self::compute_j0_mask(&subkey, nonce_tail);
+
+        Self::apply_segmented_ctr(&subkey, nonce_tail, out);
+
+        let full_tag = self.compute_tag(
+            ghash, tag_mask, associated_data, out,
+        );
+        let mut tag = aead::Tag::<Self>::default();
+        tag.copy_from_slice(
+            &full_tag[..TagSize::to_usize()],
+        );
+        Ok(tag)
     }
 
-    fn decrypt_in_place_detached(
+    fn decrypt_inout_detached(
         &self,
-        nonce: &Nonce<NonceSize>,
+        nonce: &aead::Nonce<Self>,
         associated_data: &[u8],
-        buffer: &mut [u8],
-        tag: &Tag<TagSize>,
-    ) -> Result<(), Error> {
-        if buffer.len() as u64 > C_MAX || associated_data.len() as u64 > A_MAX {
+        buffer: inout::InOutBuf<'_, '_, u8>,
+        tag: &aead::Tag<Self>,
+    ) -> aead::Result<()> {
+        if buffer.len() as u64 > C_MAX
+            || associated_data.len() as u64 > A_MAX
+        {
             return Err(Error);
         }
 
-        let inner_cipher = self.derive_key(nonce);
-        let (ctr, mask) = self.init_ctr(inner_cipher, nonce);
+        let nonce_tail = &nonce[24..32];
+        let subkey = self.derive_subkey(&nonce[..24]);
+        let ghash = Self::derive_ghash(&subkey);
+        let tag_mask =
+            Self::compute_j0_mask(&subkey, nonce_tail);
 
-        let expected_tag = self.compute_tag(inner_cipher, mask, associated_data, buffer);
+        // Verify tag over ciphertext (input side).
+        let expected = self.compute_tag(
+            ghash, tag_mask, associated_data,
+            buffer.get_in(),
+        );
 
         use subtle::ConstantTimeEq;
-        if expected_tag[..TagSize::to_usize()].ct_eq(tag).into() {
-            ctr.apply_keystream_partial(buffer.into());
-            Ok(())
-        } else {
-            Err(Error)
+        if !bool::from(
+            expected[..TagSize::to_usize()]
+                .ct_eq(&tag[..]),
+        ) {
+            return Err(Error);
         }
+
+        // Copy ciphertext to output, then decrypt in-place.
+        let out = buffer.into_out_with_copied_in();
+        Self::apply_segmented_ctr(
+            &subkey, nonce_tail, out,
+        );
+        Ok(())
     }
 }
 
 impl<Aes, TagSize> AesGem<Aes, TagSize>
 where
-    Aes: BlockCipher + BlockSizeUser<BlockSize = U16> + BlockCipherEncrypt,
+    Aes: BlockSizeUser<BlockSize = U16>
+        + BlockCipherEncrypt
+        + KeyInit,
     TagSize: self::TagSize,
 {
-    fn derive_subkey(&self, nonce: &Nonce<NonceSize>) -> Result<Cipher, Error> {
-        let mut b0 = ghash::Block::default();
-        let mut b1 = ghash::Block::default();
-        /// b0 = E(k,  n[0:12] || "AES" || 0x80)
-        /// b1 = E(k, n[12:24] || "GEM" || 0x80)
-        b0[..12].copy_from_slice(nonce[0:12]);
-        b0[12] = 0x41;
-        b0[13] = 0x45;
-        b0[14] = 0x53;
-        b0[15] = 0x80; // Padding used by CBC-MAC
-        b1[..12].copy_from_slice(nonce[12:24]);
-        b1[12] = 0x47;
-        b1[13] = 0x45;
-        b1[14] = 0x4D;
-        b0[16] = 0x80; // Padding used by CBC-MAC
-        self.cipher.encrypt_block(b0);
-        self.cipher.encrypt_block(b1);
-        let mut subkey = [&b0, &b1].concat();
-        for (a, b) in subkey.as_mut_slice().iter_mut().zip(self.key.as_slice()) {
-            *a ^= *b;
+    /// DeriveSubKey (256-bit mode):
+    ///
+    ///   b0 = AES-CBC-MAC(K, N[0:24] || "AES-256" || 0x80)
+    ///   b1 = AES-CBC-MAC(K, N[0:24] || "AES-GEM" || 0x80)
+    ///   subkey = (b0 || b1) XOR K
+    fn derive_subkey(&self, nonce_head: &[u8]) -> Aes {
+        // CBC-MAC block 1: E(K, N[0:16])
+        let mut state = Block::default();
+        state.copy_from_slice(&nonce_head[..16]);
+        self.cipher.encrypt_block(&mut state);
+
+        // b0 = E(K, state XOR (N[16:24] || "AES-256" || 0x80))
+        let mut b0 = Block::default();
+        b0[..8].copy_from_slice(&nonce_head[16..24]);
+        b0[8..15].copy_from_slice(b"AES-256");
+        b0[15] = 0x80;
+        for (a, s) in b0.iter_mut().zip(state.iter()) {
+            *a ^= *s;
         }
-        /// Final subkey for this nonce: (b0 || b1) xor (key)
-        Ok(Aes256::new(Key::from(subkey.into())));
+        self.cipher.encrypt_block(&mut b0);
+
+        // b1 = E(K, state XOR (N[16:24] || "AES-GEM" || 0x80))
+        let mut b1 = Block::default();
+        b1[..8].copy_from_slice(&nonce_head[16..24]);
+        b1[8..15].copy_from_slice(b"AES-GEM");
+        b1[15] = 0x80;
+        for (a, s) in b1.iter_mut().zip(state.iter()) {
+            *a ^= *s;
+        }
+        self.cipher.encrypt_block(&mut b1);
+
+        // subkey = (b0 || b1) XOR K
+        let mut sk = Key::<Aes>::default();
+        sk[..16].copy_from_slice(&b0);
+        sk[16..].copy_from_slice(&b1);
+        for (a, k) in sk.iter_mut().zip(self.key_bytes.iter()) {
+            *a ^= *k;
+        }
+
+        #[cfg(feature = "zeroize")]
+        {
+            b0.zeroize();
+            b1.zeroize();
+            state.zeroize();
+        }
+
+        Aes::new(&sk)
     }
 
-    /// Initialize counter mode.
-    /// 
-    /// 
-    fn init_ctr(&self, cipher: BlockCipher, nonce: &Nonce<NonceSize>) -> (Ctr64BE<&Aes>, Block) {
-        let mut j0 = ghash::Block::default();
-        /// AES-GEM: j0 is defined as the block when the internal counter = 0xffffffff_fffffffe
-        j0[..8].copy_from_slice(nonce);
-        for i in 8..16 {
-            j0[i] = 0xff;
-        }
-        j0[15] = 0xfe;
-        let mut ctr = Ctr64BE::inner_iv_init(cipher, &j0);
-        let mut tag_mask = Block::default();
-        ctr.write_keystream_block(&mut tag_mask);
+    /// DeriveSegmentKey (256-bit mode):
+    ///
+    ///   b0 = AES-ECB(subkey, N_tail || (0xFD000000_00000000 + 2*i))
+    ///   b1 = AES-ECB(subkey, N_tail || (0xFD000000_00000000 + 2*i+1))
+    ///   return b0 || b1
+    fn derive_segment_key(
+        subkey: &Aes,
+        nonce_tail: &[u8],
+        seg_idx: u32,
+    ) -> Aes {
+        let i = seg_idx as u64;
 
-        /// AES-GEM begins with the counter block = 0 rather than 2
-        /// This is because the 64-bit counter space gives us room for H and j0
-        /// derivation that the counter can never reach.
-        ///
-        /// (It is limited to 2^61 bytes, which means any counter above 2^57 is
-        /// unreachable by AES-CTR. We use the highest values for internal purposes.)
-        for i in 8..16 {
-            j0[i] = 0;
+        let mut b0 = Block::default();
+        b0[..8].copy_from_slice(nonce_tail);
+        b0[8..16].copy_from_slice(
+            &(SEG_KEY_BASE + 2 * i).to_be_bytes(),
+        );
+        subkey.encrypt_block(&mut b0);
+
+        let mut b1 = Block::default();
+        b1[..8].copy_from_slice(nonce_tail);
+        b1[8..16].copy_from_slice(
+            &(SEG_KEY_BASE + 2 * i + 1).to_be_bytes(),
+        );
+        subkey.encrypt_block(&mut b1);
+
+        let mut sk = Key::<Aes>::default();
+        sk[..16].copy_from_slice(&b0);
+        sk[16..].copy_from_slice(&b1);
+
+        #[cfg(feature = "zeroize")]
+        {
+            b0.zeroize();
+            b1.zeroize();
         }
-        let mut ctr = Ctr64BE::inner_iv_init(cipher, &j0);
-        (ctr, tag_mask)
+
+        Aes::new(&sk)
     }
 
-    /// Authenticate the given plaintext and associated data using GHASH.
-    fn compute_tag(&self, cipher: BlockCipher, mask: Block, associated_data: &[u8], buffer: &[u8]) -> Tag {
-        let mut ghash = self.ghash.clone();
+    /// Derive GHASH key H with tag-length domain separation.
+    ///
+    /// H = AES-ECB(subkey, 0xFFFFFFFF_FFFFFFFF_FEFFFFFF_FFFFFF{t})
+    /// where t = tag length in bits.
+    fn derive_ghash(subkey: &Aes) -> GHash {
+        let tag_bits = (TagSize::to_usize() * 8) as u8;
+        let mut h_block = Block::default();
+        for byte in h_block.iter_mut() {
+            *byte = 0xFF;
+        }
+        h_block[8] = 0xFE;
+        h_block[15] = tag_bits;
+        subkey.encrypt_block(&mut h_block);
+
+        let ghash = GHash::new(&h_block);
+
+        #[cfg(feature = "zeroize")]
+        h_block.zeroize();
+
+        ghash
+    }
+
+    /// Compute j0 tag mask: AES-ECB(subkey, j0).
+    ///
+    /// j0 = N[24:32] || 0xFFFFFFFF_FFFFFFFE
+    fn compute_j0_mask(subkey: &Aes, nonce_tail: &[u8]) -> Block {
+        let mut j0 = Block::default();
+        j0[..8].copy_from_slice(nonce_tail);
+        for i in 8..15 {
+            j0[i] = 0xFF;
+        }
+        j0[15] = 0xFE;
+        subkey.encrypt_block(&mut j0);
+        j0
+    }
+
+    /// Encrypt or decrypt using segmented AES-CTR32.
+    ///
+    /// Each segment derives a fresh key for at most 2^32 blocks.
+    fn apply_segmented_ctr(
+        subkey: &Aes,
+        nonce_tail: &[u8],
+        buffer: &mut [u8],
+    ) {
+        let mut offset = 0usize;
+        let mut seg_idx = 0u32;
+
+        while offset < buffer.len() {
+            let seg_key = Self::derive_segment_key(
+                subkey, nonce_tail, seg_idx,
+            );
+
+            // IV: N[24:32] || to_be32(seg_idx) || 0x00000000
+            let mut iv = Block::default();
+            iv[..8].copy_from_slice(nonce_tail);
+            iv[8..12].copy_from_slice(&seg_idx.to_be_bytes());
+
+            let remaining = buffer.len() - offset;
+            let seg_len = core::cmp::min(
+                BYTES_PER_SEGMENT,
+                remaining as u64,
+            ) as usize;
+
+            let ctr = Ctr32BE::inner_iv_init(
+                seg_key, &iv,
+            );
+            let seg = &mut buffer[offset..offset + seg_len];
+            ctr.apply_keystream_partial(seg.into());
+
+            offset += seg_len;
+            seg_idx += 1;
+        }
+    }
+
+    /// Compute authentication tag.
+    ///
+    /// S = GHASH(H, AAD || pad || C || pad || len(A) || len(C))
+    /// S2 = AES-ECB(K, S)   (uses original key, not subkey)
+    /// T = tag_mask XOR S2
+    fn compute_tag(
+        &self,
+        mut ghash: GHash,
+        tag_mask: Block,
+        associated_data: &[u8],
+        buffer: &[u8],
+    ) -> Block {
         ghash.update_padded(associated_data);
         ghash.update_padded(buffer);
 
-        let associated_data_bits = (associated_data.len() as u64) * 8;
-        let buffer_bits = (buffer.len() as u64) * 8;
+        let ad_bits = (associated_data.len() as u64) * 8;
+        let buf_bits = (buffer.len() as u64) * 8;
 
-        let mut block = ghash::Block::default();
-        block[..8].copy_from_slice(&associated_data_bits.to_be_bytes());
-        block[8..].copy_from_slice(&buffer_bits.to_be_bytes());
-        ghash.update(&[block]);
+        let mut len_block = Block::default();
+        len_block[..8].copy_from_slice(&ad_bits.to_be_bytes());
+        len_block[8..].copy_from_slice(&buf_bits.to_be_bytes());
+        ghash.update(&[len_block]);
+
         let mut tag = ghash.finalize();
-        /// AES-GEM encrypts the GHASH state before the final XOR with the keystream block.
-        /// This encryption uses the outer cipher with the original key.
-        /// It does not use the inner cipher with the derived subkey.
-        ///
-        /// This tweak makes the authentication tag's relationship with the ciphertext and
-        /// AAD non-linear with respect to H.
-        ///
-        /// The GHASH key, H, was calculaed from the subkey. If the GHASH output
-        /// could be crafted to produce an all-set block, then the auth tag would be
-        /// equal to j0 ^ H.
-        ///
-        /// By not using the subkey here, even a maliciously crafted GHASH output would not 
-        /// learn anything about H or subkey, even if they somehow know j0.
-        ///
-        /// If this is ever discovered to not be sufficient key independence, we could 
-        /// derive a separate subkey for this GHASH nonlinear permutation; i.e.
-        ///
-        /// E(k, 0xffffffff_ffffffff_ffffffff_fffffffa) = sk2
-        /// S = E(sk2, GHASH(...))
-        /// tag = S ^ j0
-        ///
-        /// For now though, this is faster and the security should be >= AES-GCM.
-        self.cipher.encrypt_block(tag);
-        for (a, b) in tag.as_mut_slice().iter_mut().zip(mask.as_slice()) {
+
+        // S2 = AES-ECB(K, S): encrypt with original key, not subkey.
+        // This makes the tag non-linear with respect to H, addressing
+        // the Ferguson truncation weakness.
+        self.cipher.encrypt_block(&mut tag);
+
+        // T = tag_mask XOR S2
+        for (a, b) in tag.iter_mut().zip(tag_mask.iter()) {
             *a ^= *b;
         }
 
