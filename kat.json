@@ -1,0 +1,298 @@
+{
+  "algorithm": "AES-GEM",
+  "version": "1.0",
+  "generatedBy": "Go reference implementation (trailofbits.com/aes-gem)",
+  "testGroups": [
+    {
+      "testGroupId": 1,
+      "keyBits": 256,
+      "tagBits": 128,
+      "nonceBits": 256,
+      "tests": [
+        {
+          "testId": 1,
+          "description": "Empty plaintext and AAD, all-zero key/nonce",
+          "key": "0000000000000000000000000000000000000000000000000000000000000000",
+          "nonce": "0000000000000000000000000000000000000000000000000000000000000000",
+          "plaintext": "",
+          "aad": "",
+          "ciphertext": "",
+          "tag": "51710d926727d97eafdef7a1e8e84481"
+        },
+        {
+          "testId": 2,
+          "description": "Empty plaintext, with AAD",
+          "key": "0000000000000000000000000000000000000000000000000000000000000000",
+          "nonce": "0000000000000000000000000000000000000000000000000000000000000000",
+          "plaintext": "",
+          "aad": "6164646974696f6e616c2064617461",
+          "ciphertext": "",
+          "tag": "7b8a46e020f4da8e000d650a1a22d02e"
+        },
+        {
+          "testId": 3,
+          "description": "With plaintext, empty AAD",
+          "key": "0000000000000000000000000000000000000000000000000000000000000000",
+          "nonce": "0000000000000000000000000000000000000000000000000000000000000000",
+          "plaintext": "68656c6c6f2c204145532d3235362d47454d21",
+          "aad": "",
+          "ciphertext": "f5b7a03c51ba202ab9c8dc0296dd697b025dfc",
+          "tag": "3502a8d2342651fa1a810d9e053fede6"
+        },
+        {
+          "testId": 4,
+          "description": "With plaintext and AAD",
+          "key": "0000000000000000000000000000000000000000000000000000000000000000",
+          "nonce": "0000000000000000000000000000000000000000000000000000000000000000",
+          "plaintext": "68656c6c6f2c204145532d3235362d47454d21",
+          "aad": "6164646974696f6e616c2064617461",
+          "ciphertext": "f5b7a03c51ba202ab9c8dc0296dd697b025dfc",
+          "tag": "6362a11eff57a8b54fa62581c23e2074"
+        },
+        {
+          "testId": 5,
+          "description": "Single byte plaintext",
+          "key": "0000000000000000000000000000000000000000000000000000000000000000",
+          "nonce": "0000000000000000000000000000000000000000000000000000000000000000",
+          "plaintext": "42",
+          "aad": "",
+          "ciphertext": "df",
+          "tag": "bcf4408eadc5b027a05edf0b919fc6c1"
+        },
+        {
+          "testId": 6,
+          "description": "One block (16 bytes) plaintext",
+          "key": "0000000000000000000000000000000000000000000000000000000000000000",
+          "nonce": "0000000000000000000000000000000000000000000000000000000000000000",
+          "plaintext": "000102030405060708090a0b0c0d0e0f",
+          "aad": "",
+          "ciphertext": "9dd3ce533a93066cf492fb3bafe64a33",
+          "tag": "8b7daf7d2f8f0e697f3c93baeb2007d9"
+        },
+        {
+          "testId": 7,
+          "description": "One block + 1 byte (17 bytes) plaintext",
+          "key": "0000000000000000000000000000000000000000000000000000000000000000",
+          "nonce": "0000000000000000000000000000000000000000000000000000000000000000",
+          "plaintext": "000102030405060708090a0b0c0d0e0f10",
+          "aad": "",
+          "ciphertext": "9dd3ce533a93066cf492fb3bafe64a3357",
+          "tag": "e3850993f3b03edad7641660173640aa"
+        },
+        {
+          "testId": 8,
+          "description": "Three blocks (48 bytes) plaintext",
+          "key": "0000000000000000000000000000000000000000000000000000000000000000",
+          "nonce": "0000000000000000000000000000000000000000000000000000000000000000",
+          "plaintext": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f",
+          "aad": "",
+          "ciphertext": "9dd3ce533a93066cf492fb3bafe64a335701cf3060364949799511730bf3721d774a5414662b80d9ae55554bfb4c7d61",
+          "tag": "e99106ddf89df9bd1af7939ec927b7dc"
+        },
+        {
+          "testId": 9,
+          "description": "Incrementing key and nonce, with plaintext and AAD",
+          "key": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+          "nonce": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+          "plaintext": "54686520717569636b2062726f776e20666f78206a756d7073206f76657220746865206c617a7920646f67",
+          "aad": "41454144206173736f6369617465642064617461",
+          "ciphertext": "737cf44ad0b728e88e4b9d81bd476d2d6496a87e9661bd0c5576a91bd0dc4d9a46f6a421942c9a4b421a53",
+          "tag": "681b0552d339fd459bd94a3dc4284b79"
+        },
+        {
+          "testId": 10,
+          "description": "All-ones key and nonce, with plaintext and AAD",
+          "key": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+          "nonce": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+          "plaintext": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f",
+          "aad": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+          "ciphertext": "81be5260fad0773fc6ec46e9cfe67152cb9df6df3c5da4c6f7890d57afece318890ae3de5a0316d4dd7cf1f6fc1bcf666fede6ab044e97a561d1768875da2041",
+          "tag": "569673d0f112c0b955699646da0261f1"
+        },
+        {
+          "testId": 11,
+          "description": "256-byte plaintext, 64-byte AAD",
+          "key": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+          "nonce": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+          "plaintext": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f404142434445464748494a4b4c4d4e4f505152535455565758595a5b5c5d5e5f606162636465666768696a6b6c6d6e6f707172737475767778797a7b7c7d7e7f808182838485868788898a8b8c8d8e8f909192939495969798999a9b9c9d9e9fa0a1a2a3a4a5a6a7a8a9aaabacadaeafb0b1b2b3b4b5b6b7b8b9babbbcbdbebfc0c1c2c3c4c5c6c7c8c9cacbcccdcecfd0d1d2d3d4d5d6d7d8d9dadbdcdddedfe0e1e2e3e4e5e6e7e8e9eaebecedeeeff0f1f2f3f4f5f6f7f8f9fafbfcfdfeff",
+          "aad": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f",
+          "ciphertext": "27159369a5c7478ced62f5f8de3d0d0212e8c24de801c66b3e4fdc76a9b373f10eb2a66ed173c54c0e5c1e5fa314a7b49533b8b18aaeb04344099094ce5b4c24db3871999b7a53fab7842062531ef632b2bf1b9cbd59c3c520f5a35f81ea3d257d26081f40328b8b25c06eeaf3a9aab7e7a3d528d93eb6df66f2f88313e38a5bf315259f2f760efb89d6e6f28f09eb44866aab2ed44c71720c9b4f39d4e4667d209e0b981fd76cb3e132b69b50a42a87b5eaff200b61e0b7e34f5a71ff24a66818f4d58cbe76ad18950c357ef30b5223004a4062b53037cc51d1b7a9dc026bafd7441b82b24e94b3d8eaf32da55081bada2e99645841a8febf658b512cb25318",
+          "tag": "d6d6870574474450567a0181b945c74d"
+        },
+        {
+          "testId": 12,
+          "description": "Short plaintext, 256-byte AAD",
+          "key": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+          "nonce": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+          "plaintext": "dead",
+          "aad": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f404142434445464748494a4b4c4d4e4f505152535455565758595a5b5c5d5e5f606162636465666768696a6b6c6d6e6f707172737475767778797a7b7c7d7e7f808182838485868788898a8b8c8d8e8f909192939495969798999a9b9c9d9e9fa0a1a2a3a4a5a6a7a8a9aaabacadaeafb0b1b2b3b4b5b6b7b8b9babbbcbdbebfc0c1c2c3c4c5c6c7c8c9cacbcccdcecfd0d1d2d3d4d5d6d7d8d9dadbdcdddedfe0e1e2e3e4e5e6e7e8e9eaebecedeeeff0f1f2f3f4f5f6f7f8f9fafbfcfdfeff",
+          "ciphertext": "f9b9",
+          "tag": "a7ffff2f3b0c76b96d59a61b8ef9d623"
+        },
+        {
+          "testId": 13,
+          "description": "1024-byte plaintext",
+          "key": "deadbeefdeadbeefdeadbeefdeadbeefcafebabecafebabecafebabecafebabe",
+          "nonce": "0123456789abcdef0123456789abcdeffedcba9876543210fedcba9876543210",
+          "plaintext": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f404142434445464748494a4b4c4d4e4f505152535455565758595a5b5c5d5e5f606162636465666768696a6b6c6d6e6f707172737475767778797a7b7c7d7e7f808182838485868788898a8b8c8d8e8f909192939495969798999a9b9c9d9e9fa0a1a2a3a4a5a6a7a8a9aaabacadaeafb0b1b2b3b4b5b6b7b8b9babbbcbdbebfc0c1c2c3c4c5c6c7c8c9cacbcccdcecfd0d1d2d3d4d5d6d7d8d9dadbdcdddedfe0e1e2e3e4e5e6e7e8e9eaebecedeeeff0f1f2f3f4f5f6f7f8f9fafbfcfdfeff000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f404142434445464748494a4b4c4d4e4f505152535455565758595a5b5c5d5e5f606162636465666768696a6b6c6d6e6f707172737475767778797a7b7c7d7e7f808182838485868788898a8b8c8d8e8f909192939495969798999a9b9c9d9e9fa0a1a2a3a4a5a6a7a8a9aaabacadaeafb0b1b2b3b4b5b6b7b8b9babbbcbdbebfc0c1c2c3c4c5c6c7c8c9cacbcccdcecfd0d1d2d3d4d5d6d7d8d9dadbdcdddedfe0e1e2e3e4e5e6e7e8e9eaebecedeeeff0f1f2f3f4f5f6f7f8f9fafbfcfdfeff000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f404142434445464748494a4b4c4d4e4f505152535455565758595a5b5c5d5e5f606162636465666768696a6b6c6d6e6f707172737475767778797a7b7c7d7e7f808182838485868788898a8b8c8d8e8f909192939495969798999a9b9c9d9e9fa0a1a2a3a4a5a6a7a8a9aaabacadaeafb0b1b2b3b4b5b6b7b8b9babbbcbdbebfc0c1c2c3c4c5c6c7c8c9cacbcccdcecfd0d1d2d3d4d5d6d7d8d9dadbdcdddedfe0e1e2e3e4e5e6e7e8e9eaebecedeeeff0f1f2f3f4f5f6f7f8f9fafbfcfdfeff000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f404142434445464748494a4b4c4d4e4f505152535455565758595a5b5c5d5e5f606162636465666768696a6b6c6d6e6f707172737475767778797a7b7c7d7e7f808182838485868788898a8b8c8d8e8f909192939495969798999a9b9c9d9e9fa0a1a2a3a4a5a6a7a8a9aaabacadaeafb0b1b2b3b4b5b6b7b8b9babbbcbdbebfc0c1c2c3c4c5c6c7c8c9cacbcccdcecfd0d1d2d3d4d5d6d7d8d9dadbdcdddedfe0e1e2e3e4e5e6e7e8e9eaebecedeeeff0f1f2f3f4f5f6f7f8f9fafbfcfdfeff",
+          "aad": "61757468656e7469636174656420627574206e6f7420656e63727970746564",
+          "ciphertext": "3a8de7e53e181a4b92d76a3d0673889ab4d3952d6b4cc1b8b20120450c4c83c59a01e175fab1516d59c05cb4f754a0a15e40d77c003ffb14b595267e6575feffcdee883647790a2abcac53b036e318b58ef47b3079585f670c1396ee9ce76f25f0228dc03034bc65289d3c815ce0cea6d066ab8f6b16d4df4a995d6b3e1617591e4e207c265e4f8d1be25a2c0c91eae59abb7ac16336f847fbcb73bb805c13f07262c6d6473a4cb4c269635129de8c0bbd5f46f7e22912c1a4f84ee5eab2fe41854630ccbd908df35865cdc654c2153f9a6a4cfe98c4a5d419abfd2bc687c055b9b27ebb4cf4e594ef6be8e258df1808d93adbd1f09480e7110053dd3f2d9e1bb8a588c362dd9a42655704774eb3aa486fb1feb103a3b123a7a147365183336582d96ef101f265c746fddbd5d30ebe99c81f68ad48de78239dbb44923ed367fae9ef88b3b34b0cd64ccf34c624af95c8b168d1228e1144a067ae2fc5bde238e782d39bb42517664654be099ac5e3f7ebafd7e285f6647b98df7185bf443d2222c37b6a8c5964a37772d36648806217728cdd9f03b7c2f198e60ba59fcb7584944f2a38fcf9acb8a172f5dabe95d664b9cb3be2b8b5751f9e1188d22c564728e3b8cbd14321604df9ca5659016a569f3eae0ed955646c8ab8cd3a4588fd6fedcaac3704d0e64a9df97824539ee647f069fb46631c18e3b1bde57ee74f76cd27b8956906b634e5847bfb8ed4d93ccf204424840cadbf172e8db035e43a3937dfc032c16e2d35b7b6db97d8e31842d403a457836f3719dc5cfa5ba31bfbd0b6558aae0ce8c00b6c5eef95b7d86ddaf78e2041277a57d5014d61b6ed1e021c2afef54f88108182424a1ea5835d74a0f373b4643d716169e6d67e5109e4861f2a6e1d6248177fcf0142251b30d37f5426f7b0281154e816d19dc6f23b0331da551af2efa2c35576e33110ce879eb1e8395829526476624b17c4a1c61f4832d5fde3d587860a0998698c855fa720f731cec5e846b71e61084bc85e31a27ce5af8dca40413dbbb9ce3324243db6d0e0926e77ca654b10c7cca654a640579767db5b188bb00aa102998cf85d01186cfd87bb6eb5a39f69828e7d9a0df1653b9ce832000fe2918b6a7361ad6f6b34df119f1068c21723928e47b871af64e05415e8b768d5fe0facc4e8ca9356dc069b6ba79bea654640dc7b43ea6c982b2594bcd8445181825b0927be9727679056989c26546c31d2ac35ae54bf01ad20f66d975fea6b87c4228a7e9af5548e60760d2231aa2f3b2925db2621c5b4391bbb89d71bbad26de59876b56bc49e65955223555254c2b4d13744522b65372bdcd5175ef031f219675d9c451822f8af508567091a3175651441b77a20cb5a3e626432e99c35b24dc23ce2c538cf92f5b29f5592980f4f733ff1be35e872a4c643c0c45193eee543",
+          "tag": "8bccdf808d9a99d7adf6e8011a36a1dc"
+        },
+        {
+          "testId": 14,
+          "description": "Empty plaintext, 1-byte AAD",
+          "key": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+          "nonce": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+          "plaintext": "",
+          "aad": "00",
+          "ciphertext": "",
+          "tag": "873855442d8e2d0c194727f0febc36e3"
+        },
+        {
+          "testId": 15,
+          "description": "1-byte plaintext, 1-byte AAD",
+          "key": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+          "nonce": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+          "plaintext": "ff",
+          "aad": "00",
+          "ciphertext": "d8",
+          "tag": "92f3f13f5576942b7da7237497bb4b89"
+        }
+      ]
+    },
+    {
+      "testGroupId": 2,
+      "keyBits": 256,
+      "tagBits": 96,
+      "nonceBits": 256,
+      "tests": [
+        {
+          "testId": 1,
+          "description": "96-bit tag: empty plaintext and AAD",
+          "key": "0000000000000000000000000000000000000000000000000000000000000000",
+          "nonce": "0000000000000000000000000000000000000000000000000000000000000000",
+          "plaintext": "",
+          "aad": "",
+          "ciphertext": "",
+          "tag": "51710d926727d97eafdef7a1"
+        },
+        {
+          "testId": 2,
+          "description": "96-bit tag: with plaintext and AAD",
+          "key": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+          "nonce": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+          "plaintext": "68656c6c6f2c204145532d3235362d47454d21",
+          "aad": "6164646974696f6e616c2064617461",
+          "ciphertext": "4f71fd06ceee61caa038d2c1e7062e4a47b4f1",
+          "tag": "b176ea201cf7147f551532a4"
+        },
+        {
+          "testId": 3,
+          "description": "96-bit tag: 256-byte plaintext",
+          "key": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+          "nonce": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+          "plaintext": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f404142434445464748494a4b4c4d4e4f505152535455565758595a5b5c5d5e5f606162636465666768696a6b6c6d6e6f707172737475767778797a7b7c7d7e7f808182838485868788898a8b8c8d8e8f909192939495969798999a9b9c9d9e9fa0a1a2a3a4a5a6a7a8a9aaabacadaeafb0b1b2b3b4b5b6b7b8b9babbbcbdbebfc0c1c2c3c4c5c6c7c8c9cacbcccdcecfd0d1d2d3d4d5d6d7d8d9dadbdcdddedfe0e1e2e3e4e5e6e7e8e9eaebecedeeeff0f1f2f3f4f5f6f7f8f9fafbfcfdfeff",
+          "aad": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f",
+          "ciphertext": "27159369a5c7478ced62f5f8de3d0d0212e8c24de801c66b3e4fdc76a9b373f10eb2a66ed173c54c0e5c1e5fa314a7b49533b8b18aaeb04344099094ce5b4c24db3871999b7a53fab7842062531ef632b2bf1b9cbd59c3c520f5a35f81ea3d257d26081f40328b8b25c06eeaf3a9aab7e7a3d528d93eb6df66f2f88313e38a5bf315259f2f760efb89d6e6f28f09eb44866aab2ed44c71720c9b4f39d4e4667d209e0b981fd76cb3e132b69b50a42a87b5eaff200b61e0b7e34f5a71ff24a66818f4d58cbe76ad18950c357ef30b5223004a4062b53037cc51d1b7a9dc026bafd7441b82b24e94b3d8eaf32da55081bada2e99645841a8febf658b512cb25318",
+          "tag": "dcff574574b1dbe759a1c5ea"
+        }
+      ]
+    },
+    {
+      "testGroupId": 3,
+      "keyBits": 256,
+      "tagBits": 104,
+      "nonceBits": 256,
+      "tests": [
+        {
+          "testId": 1,
+          "description": "104-bit tag: with plaintext and AAD",
+          "key": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+          "nonce": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+          "plaintext": "68656c6c6f2c204145532d3235362d47454d21",
+          "aad": "6164646974696f6e616c2064617461",
+          "ciphertext": "4f71fd06ceee61caa038d2c1e7062e4a47b4f1",
+          "tag": "f54baa4ea8296a5979d395b6ec"
+        }
+      ]
+    },
+    {
+      "testGroupId": 4,
+      "keyBits": 256,
+      "tagBits": 112,
+      "nonceBits": 256,
+      "tests": [
+        {
+          "testId": 1,
+          "description": "112-bit tag: with plaintext and AAD",
+          "key": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+          "nonce": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+          "plaintext": "68656c6c6f2c204145532d3235362d47454d21",
+          "aad": "6164646974696f6e616c2064617461",
+          "ciphertext": "4f71fd06ceee61caa038d2c1e7062e4a47b4f1",
+          "tag": "2d398230b478009d35e4c40fe4f6"
+        }
+      ]
+    },
+    {
+      "testGroupId": 5,
+      "keyBits": 256,
+      "tagBits": 120,
+      "nonceBits": 256,
+      "tests": [
+        {
+          "testId": 1,
+          "description": "120-bit tag: with plaintext and AAD",
+          "key": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+          "nonce": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+          "plaintext": "68656c6c6f2c204145532d3235362d47454d21",
+          "aad": "6164646974696f6e616c2064617461",
+          "ciphertext": "4f71fd06ceee61caa038d2c1e7062e4a47b4f1",
+          "tag": "a8889c51a771eb49552de7d885aa20"
+        }
+      ]
+    },
+    {
+      "testGroupId": 6,
+      "keyBits": 256,
+      "tagBits": 128,
+      "nonceBits": 256,
+      "tests": [
+        {
+          "testId": 1,
+          "description": "Key commitment: all-zero key/nonce",
+          "key": "0000000000000000000000000000000000000000000000000000000000000000",
+          "nonce": "0000000000000000000000000000000000000000000000000000000000000000",
+          "plaintext": "",
+          "aad": "",
+          "ciphertext": "",
+          "tag": "51710d926727d97eafdef7a1e8e84481",
+          "keyCommitment": "6e605e81e59ffebe4e0fb6f49826dd769a29452b64be504635d700e0cb4787b1"
+        },
+        {
+          "testId": 2,
+          "description": "Key commitment: incrementing key/nonce",
+          "key": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+          "nonce": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+          "plaintext": "",
+          "aad": "",
+          "ciphertext": "",
+          "tag": "6e957dcc79b754deaf9d299f8b9cc79f",
+          "keyCommitment": "14f805292761a15ec59045c1ac818f8cc30ef16975895782260b0fe0b96304fb"
+        },
+        {
+          "testId": 3,
+          "description": "Key commitment: all-ones key/nonce",
+          "key": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+          "nonce": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+          "plaintext": "",
+          "aad": "",
+          "ciphertext": "",
+          "tag": "d2915934cf8387059cdb2498c43a2900",
+          "keyCommitment": "6cbbc2c59e777e8d275fc1410eed921abe726320a93c9bd9eac9fa34e0760a3a"
+        }
+      ]
+    }
+  ]
+}
