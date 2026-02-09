@@ -54,6 +54,32 @@ The output of each CBC-MAC call has about 128 bits of entropy, except that each 
 
 To alleviate this concern, we borrow a trick from Salsa20's design: XOR the original encryption key with the output of this function to ensure a 256-bit uniformly random distribution of bits to any attacker that doesn't already know the input key.
 
+### DeriveSegmentKey (256-bit mode)
+
+**Inputs**:
+
+1. Subkey (subkey), 256 bits
+2. Nonce tail (N_tail), 64 bits
+3. Segment index (i), 0 to 2^29 - 1
+
+**Algorithm**
+
+1. Set `b0 = AES-256-ECB(subkey, N_tail || (0xFD000000_00000000 + 2 * i))`
+2. Set `b1 = AES-256-ECB(subkey, N_tail || (0xFD000000_00000000 + 2 * i + 1))`
+3. Return `b0 || b1`
+
+**Output**:
+
+A 256-bit segment encryption key.
+
+**Comments**:
+
+Each segment encryption key is derived from the subkey using two AES-ECB invocations on blocks in the reserved counter range (`0xFD000000_00000000` through `0xFD000000_3FFFFFFF`).
+
+The nonce tail (N[24:32]) is included in the derivation blocks as defense in depth, providing additional nonce binding beyond the implicit binding through the subkey.
+
+Unlike DeriveSubKey, we do not XOR the output with the subkey. The subkey is already pseudorandom (derived from AES-CBC-MAC XOR'd with K), so AES-ECB of the subkey on distinct inputs produces pseudorandom outputs without additional mixing.
+
 ### Encryption (256-bit mode)
 
 **Inputs**:
@@ -67,35 +93,45 @@ To alleviate this concern, we borrow a trick from Salsa20's design: XOR the orig
 **Algorithm**:
 
 1. Let `subkey = DeriveSubKey(K, N[0:24])`
-2. Let `H = AES-256-ECB(subkey, 0xFFFFFFFF_FFFFFFFF_FFFFFFFF_FFFFFFFF)`
+2. Let `H = AES-256-ECB(subkey, 0xFFFFFFFF_FFFFFFFF_FEFFFFFF_FFFFFF{t})` where `{t}` is the tag length in bits
 3. Let `j0 = N[24:32] || 0xFFFFFFFF_FFFFFFFE`
-4. Let `C = AES-256-CTR(subkey, N[24:32] || 0x00000000_00000000, P)`
+4. For `i = 0, 1, 2, ...` while P has remaining plaintext:
+   1. Let `enc_key = DeriveSegmentKey(subkey, N[24:32], i)`
+   2. Let `P_i` = the next `min(2^36, remaining)` bytes of P
+   3. Let `C_i = AES-256-CTR32(enc_key, N[24:32] || to_be32(i) || 0x00000000, P_i)`
+   4. Append `C_i` to C
 5. Let `u = 128 * ceil(len(C)/128) - len(C)` and `v = 128 * ceil(len(A)/128) - len(A)`
 6. Let `S = GHASH(H, A || repeat(0, v) || C || repeat(0, u) || len(A) || len(C))` where `repeat(b, x)` is a repeating sequence of length `x` bits with value `b`, as with GCM
 7. Let `S2 = AES-256-ECB(K, S)` - GCM does not do this
-8. Let `T = MSB_t(AES-256-CTR(subkey, j0) xor S2)`
+8. Let `T = MSB_t(AES-256-ECB(subkey, j0) xor S2)`
 
-**Outputs**: 
+**Outputs**:
 
 1. Ciphertext, C, equal in length to the plaintext P.
 2. Authentication tag, T.
 
 **Comments**:
 
-Where GCM uses a 32-bit internal counter, we specify 64 bits instead. The most significant 64 bits of the counter nonce are the remaining bits from the 256-bit nonce that were not used to derive a subkey.
+The internal counter is split into a 29-bit segment index and a 32-bit per-segment block counter. The 128-bit CTR input block has the structure `[N[24:32] (8 bytes)][segment_index (4 bytes)][counter32 (4 bytes)]`, where AES-CTR32 increments only the last 4 bytes.
+
+Each segment encryption key is used for at most 2^32 AES blocks (2^36 bytes). This avoids the PRP-PRF distinguisher that weakens confidentiality when the same AES key encrypts more than 2^32 blocks. After each 2^36-byte segment, a new segment key is derived from the subkey.
+
+The full counter value (treating the lower 8 bytes of the AES block as a 64-bit big-endian integer) can be described as `(segment_index << 32) | block_counter`. The range of counter values reachable by data encryption is [`0x00000000_00000000`, `0x1FFFFFFF_FFFFFFFF`].
+
+We reserve internal counter values `0x20000000_00000000` through `0xFFFFFFFF_FFFFFFFF`. The allocated reserved values are:
+
+| Counter range | Purpose |
+| --- | --- |
+| `0xFD000000_00000000` to `0xFD000000_3FFFFFFF` | Segment key derivation |
+| `0xFEFFFFFF_FFFFFF01` to `0xFEFFFFFF_FFFFFF80` | H derivation (tag-length-specific) |
+| `0xFFFFFFFF_FFFFFFFC` to `0xFFFFFFFF_FFFFFFFD` | Key commitment |
+| `0xFFFFFFFF_FFFFFFFE` | j0 (tag mask) |
+
+The encoding of lengths in the GHASH step is restricted to 2^64 bits. This limits the maximum plaintext to 2^61 bytes (2^57 AES blocks), so at most 2^25 of the 2^29 segment indices are reachable in practice.
 
 Applications **MAY** cache the subkey for multiple encryptions if the first 192 bits of the nonce are the same, to save on subkey derivation overhead, but **MUST NOT** reuse the same 256-bit nonce twice for a given key, K.
 
-Although a 64-bit counter would theoretically permit longer plaintexts than 2^64 bits, the encoding of lengths in the GHASH step is restricted to 2^64 bits. This is congruent to the maximum length of AAD in AES-GCM. These interal counter values are inaccessible due to GHASH length encoding.
-
-2^64 bits is equal to 2^61 bytes (where the size of a byte is 8 bits), which is 2^57 AES blocks. The range of block counters that AES-CTR can reach can be described by the interval [`0x00000000_00000000`, `0x01ffffff_ffffffff`].
-
-Therefore, we reserve internal counter values `0x02000000_00000000` through `0xffffffff_ffffffff`.
-
-The counter values `0xffffffff_fffffffe` and `0xffffffff_ffffffff` are reserved for j0 (which is used to encrypt the authentication tag) and H (which is the authentication key for GHASH), respectively.
-
-The counter values `0xffffffff_fffffffc` and `0xffffffff_fffffffd` are reserved for
-calculating an optional key commitment value.
+The GHASH key, H, is derived using a block that encodes the authentication tag length. This ensures each tag length has a distinct GHASH key. Consequently, truncating a valid longer tag does not produce a valid shorter tag, because the underlying GHASH computations use different keys.
 
 For authentication, the output of GHASH is not used directly, as with AES-GCM. Instead, the output is encrypted in ECB mode using the original key, K, rather than the subkey. This encryption of the GHASH output addresses a weakness with AES-GCM tag truncation as outlined by [Niels Ferguson in 2015](https://csrc.nist.gov/csrc/media/projects/block-cipher-techniques/documents/bcm/comments/cwc-gcm/ferguson2.pdf).
 
@@ -120,42 +156,46 @@ Second, this choice binds the permutation of the GHASH output to the original ke
 **Algorithm**:
 
 1. Set `subkey = DeriveSubKey(K, N[0:24])`
-2. Let `H = AES-256-ECB(subkey, 0xFFFFFFFF_FFFFFFFF_FFFFFFFF_FFFFFFFF)`
+2. Let `H = AES-256-ECB(subkey, 0xFFFFFFFF_FFFFFFFF_FEFFFFFF_FFFFFF{t})` where `{t}` is the tag length in bits
 3. Let `j0 = N[24:32] || 0xFFFFFFFF_FFFFFFFE`
 4. Let `u = 128 * ceil(len(C)/128) - len(C)` and `v = 128 * ceil(len(A)/128) - len(A)`
 5. Let `S = GHASH(H, A || repeat(0, v) || C || repeat(0, u) || len(A) || len(C))` where `repeat(b, x)` is a repeating sequence of length `x` bits with value `b`, as with GCM
 6. Let `S2 = AES-256-ECB(K, S)` - GCM does not do this
-7. Let `T2 = MSB_t(AES-CTR(subkey, j0) xor S2)`
+7. Let `T2 = MSB_t(AES-256-ECB(subkey, j0) xor S2)`
 8. Compare `T` with `T2` in constant-time. If they do not match, abort.
-9. Let `P = AES-256-CTR(subkey, N[24:32] || 0x00000000_00000000, C)`
+9. For `i = 0, 1, 2, ...` while C has remaining ciphertext:
+   1. Let `enc_key = DeriveSegmentKey(subkey, N[24:32], i)`
+   2. Let `C_i` = the next `min(2^36, remaining)` bytes of C
+   3. Let `P_i = AES-256-CTR32(enc_key, N[24:32] || to_be32(i) || 0x00000000, C_i)`
+   4. Append `P_i` to P
 
 **Outputs**: 
 
 1. Plaintext (P), or error.
 
-### Key Commitment
+### Key Commitment (256-bit mode)
 
 **Inputs**:
 
 1. Key (K), 256 bits
-2. Nonce (N), 192 bits
+2. Nonce (N), 256 bits
 
 **Algorithm**:
 
 1. Set `subkey = DeriveSubKey(K, N[0:24])`
 2. Set `P = repeat(0, 32)`
-3. Set `Q = AES-256-CTR(subkey, 0xffffffff_fffffffc, P)`
+3. Set `Q = AES-256-CTR32(subkey, N[24:32] || 0xFFFFFFFF_FFFFFFFC, P)`
 
 **Output**:
 
 A 256-bit value that can only be produced by a given input key.
 
-### Verifying Key Commitment
+### Verifying Key Commitment (256-bit mode)
 
 **Inputs**:
 
 1. Key (K), 256 bits
-2. Nonce (N), 192 bits
+2. Nonce (N), 256 bits
 3. Commitment (Q), 256 bits
 
 **Algorithm**:
@@ -191,6 +231,27 @@ A 128-bit subkey for use with the rest of the algorithm.
 
 The constant `0x47454D2D_313238` is the ASCII string `GEM-128`.
 
+### DeriveSegmentKey (128-bit mode)
+
+**Inputs**:
+
+1. Subkey (subkey), 128 bits
+2. Nonce tail (N_tail), 64 bits
+3. Segment index (i), 0 to 2^29 - 1
+
+**Algorithm**:
+
+1. Set `b = AES-128-ECB(subkey, N_tail || (0xFD000000_00000000 + i))`
+2. Return `b`
+
+**Output**:
+
+A 128-bit segment encryption key.
+
+**Comments**:
+
+The construction is similar to AES-256-GEM's DeriveSegmentKey, but requires only one AES-ECB invocation to produce a 128-bit key.
+
 ### Encryption (128-bit mode)
 
 **Inputs**:
@@ -198,28 +259,32 @@ The constant `0x47454D2D_313238` is the ASCII string `GEM-128`.
 1. Key (K), 128 bits
 2. Nonce (N), 192 bits
 3. Plaintext (P), 0 to 2^64 - 1 bits
-4. Additioal authenticated data (A), 0 to 2^64 - 1 bits
+4. Additional authenticated data (A), 0 to 2^64 - 1 bits
 5. Authentication tag length (t), 32 to 128 bits
 
 **Algorithm**:
 
 1. Let `subkey = DeriveSubKey(K, N[0:16])`
-2. Let `H = AES-ECB(subkey, 0xFFFFFFFF_FFFFFFFF_FFFFFFFF_FFFFFFFF)`
+2. Let `H = AES-128-ECB(subkey, 0xFFFFFFFF_FFFFFFFF_FEFFFFFF_FFFFFF{t})` where `{t}` is the tag length in bits
 3. Let `j0 = N[16:24] || 0xFFFFFFFF_FFFFFFFE`
-4. Let `C = AES-128-CTR(subkey, N[16:24] || 0x00000000_00000000, P)`
+4. For `i = 0, 1, 2, ...` while P has remaining plaintext:
+   1. Let `enc_key = DeriveSegmentKey(subkey, N[16:24], i)`
+   2. Let `P_i` = the next `min(2^36, remaining)` bytes of P
+   3. Let `C_i = AES-128-CTR32(enc_key, N[16:24] || to_be32(i) || 0x00000000, P_i)`
+   4. Append `C_i` to C
 5. Let `u = 128 * ceil(len(C)/128) - len(C)` and `v = 128 * ceil(len(A)/128) - len(A)`
 6. Let `S = GHASH(H, A || repeat(0, v) || C || repeat(0, u) || len(A) || len(C))` where `repeat(b, x)` is a repeating sequence of length `x` bits with value `b`, as with GCM
 7. Let `S2 = AES-128-ECB(K, S)` - GCM does not do this
-8. Let `T = MSB_t(AES-128-CTR(subkey, j0) xor S2)`
+8. Let `T = MSB_t(AES-128-ECB(subkey, j0) xor S2)`
 
-**Outputs**: 
+**Outputs**:
 
 1. Ciphertext, C, equal in length to the plaintext P.
 2. Authentication tag, T.
 
 **Comments**:
 
-The construction is similar to AES-256-GEM.
+The construction is similar to AES-256-GEM. See the comments in the 256-bit encryption section for the rationale behind the segmented counter and tag-length-specific H derivation.
 
 ### Decryption (128-bit mode)
 
@@ -229,47 +294,51 @@ The construction is similar to AES-256-GEM.
 2. Nonce (N), 192 bits
 3. Ciphertext (C), 0 to 2^64 - 1 bits
 4. Authentication Tag (T), 32 to 128 bits
-5. Additioal authenticated data (A), 0 to 2^64 - 1 bits
+5. Additional authenticated data (A), 0 to 2^64 - 1 bits
 
 **Algorithm**:
 
 1. Set `subkey = DeriveSubKey(K, N[0:16])`
-2. Let `H = AES-128-ECB(subkey, 0xFFFFFFFF_FFFFFFFF_FFFFFFFF_FFFFFFFF)`
+2. Let `H = AES-128-ECB(subkey, 0xFFFFFFFF_FFFFFFFF_FEFFFFFF_FFFFFF{t})` where `{t}` is the tag length in bits
 3. Let `j0 = N[16:24] || 0xFFFFFFFF_FFFFFFFE`
 4. Let `u = 128 * ceil(len(C)/128) - len(C)` and `v = 128 * ceil(len(A)/128) - len(A)`
 5. Let `S = GHASH(H, A || repeat(0, v) || C || repeat(0, u) || len(A) || len(C))` where `repeat(b, x)` is a repeating sequence of length `x` bits with value `b`, as with GCM
 6. Let `S2 = AES-128-ECB(K, S)` - GCM does not do this
-7. Let `T2 = MSB_t(AES-128-CTR(subkey, j0) xor S2)`
+7. Let `T2 = MSB_t(AES-128-ECB(subkey, j0) xor S2)`
 8. Compare `T` with `T2` in constant-time. If they do not match, abort.
-9. Let `P = AES-128-CTR(subkey, N[16:24] || 0x00000000_00000000, C)`
+9. For `i = 0, 1, 2, ...` while C has remaining ciphertext:
+   1. Let `enc_key = DeriveSegmentKey(subkey, N[16:24], i)`
+   2. Let `C_i` = the next `min(2^36, remaining)` bytes of C
+   3. Let `P_i = AES-128-CTR32(enc_key, N[16:24] || to_be32(i) || 0x00000000, C_i)`
+   4. Append `P_i` to P
 
-**Outputs**: 
+**Outputs**:
 
 1. Plaintext (P), or error.
 
-### Key Commitment
+### Key Commitment (128-bit mode)
 
 **Inputs**:
 
 1. Key (K), 128 bits
-2. Nonce (N), 128 bits
+2. Nonce (N), 192 bits
 
 **Algorithm**:
 
 1. Set `subkey = DeriveSubKey(K, N[0:16])`
 2. Set `P = repeat(0, 32)`
-3. Set `Q = AES-CTR(subkey, 0xffffffff_fffffffc, P)`
+3. Set `Q = AES-128-CTR32(subkey, N[16:24] || 0xFFFFFFFF_FFFFFFFC, P)`
 
 **Output**:
 
 A 256-bit value that can only be produced by a given input key.
 
-### Verifying Key Commitment
+### Verifying Key Commitment (128-bit mode)
 
 **Inputs**:
 
 1. Key (K), 128 bits
-2. Nonce (N), 128 bits
+2. Nonce (N), 192 bits
 3. Commitment (Q), 256 bits
 
 **Algorithm**:
