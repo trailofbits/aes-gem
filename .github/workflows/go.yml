@@ -1,0 +1,82 @@
+name: Go
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "ref/golang/**"
+      - "kat.json"
+      - ".github/workflows/go.yml"
+  pull_request:
+    paths:
+      - "ref/golang/**"
+      - "kat.json"
+      - ".github/workflows/go.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  format:
+    name: Format
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@7a3fe6cf4cb3a834922a1244abfce67bcef6a0c5  # v6.2.0
+        with:
+          go-version-file: ref/golang/go.mod
+      - name: Check formatting
+        working-directory: ref/golang
+        run: |
+          unformatted=$(gofmt -l .)
+          if [ -n "$unformatted" ]; then
+            echo "::error::Files not formatted:"
+            echo "$unformatted"
+            exit 1
+          fi
+
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@7a3fe6cf4cb3a834922a1244abfce67bcef6a0c5  # v6.2.0
+        with:
+          go-version-file: ref/golang/go.mod
+      - uses: golangci/golangci-lint-action@1e7e51e771db61008b38414a730f564565cf7c20  # v9.2.0
+        with:
+          working-directory: ref/golang
+
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@7a3fe6cf4cb3a834922a1244abfce67bcef6a0c5  # v6.2.0
+        with:
+          go-version-file: ref/golang/go.mod
+      - name: Run tests
+        working-directory: ref/golang
+        run: go test -race -v -count=1 ./...
+
+  mutation:
+    name: Mutation Testing
+    runs-on: ubuntu-latest
+    needs: [test]
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@7a3fe6cf4cb3a834922a1244abfce67bcef6a0c5  # v6.2.0
+        with:
+          go-version-file: ref/golang/go.mod
+      - uses: go-gremlins/gremlins-action@9dc8e981be89dbf79258cdd1400c54e762c770fe  # v1.0.3
+        with:
+          version: latest
+          workdir: ref/golang
